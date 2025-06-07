@@ -1,0 +1,21 @@
+# Ambiente Virtual Python
+.venv/
+
+# Arquivos de cache do Python
+__pycache__/
+*.pyc
+*.pyo
+*~
+
+# Arquivos de configuração do editor/IDE (exemplo para VSCode)
+.vscode/
+
+# Arquivos de banco de dados SQLite (se você planeja usar e não versionar)
+# *.db
+# *.sqlite3
+
+# Arquivos de documentos processados ou PDFs originais (se não quiser versioná-los no Git)
+documentos_para_catalogar/
+# documentos_processados/
+# pdfs_originais/
+# (Considere se quer ou não versionar os PDFs. Para backup é bom, mas podem deixar o repo grande)
