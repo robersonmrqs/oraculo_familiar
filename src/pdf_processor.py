@@ -2,23 +2,33 @@
 import hashlib
 import ocrmypdf
 import os
-import shutil # Para remover pastas temporárias
 import tempfile # Para criar arquivos/pastas temporárias
 from pathlib import Path
 from PyPDF2 import PdfReader
 
 def encontrar_pdfs(pasta_documentos: str) -> list[Path]:
-    """Encontra todos os arquivos PDF em uma determinada pasta."""
+    """
+    Encontra todos os arquivos PDF em uma determinada pasta,
+    independentemente do caso da extensão (.pdf ou .PDF).
+    """
     caminho_pasta = Path(pasta_documentos)
     if not caminho_pasta.is_dir():
         print(f"Erro: A pasta '{pasta_documentos}' não foi encontrada.")
         return []
-
-    arquivos_pdf = list(caminho_pasta.glob("*.pdf"))
-    print(f"Encontrados {len(arquivos_pdf)} arquivos PDF em '{pasta_documentos}'.")
-    for pdf in arquivos_pdf:
-        print(f" - {pdf.name}")
-    return arquivos_pdf
+    
+    arquivos_pdf_lower = list(caminho_pasta.glob("*.pdf"))
+    arquivos_pdf_upper = list(caminho_pasta.glob("*.PDF"))
+    
+    todos_os_pdfs_encontrados = list(set(arquivos_pdf_lower + arquivos_pdf_upper))
+    
+    if todos_os_pdfs_encontrados:
+        print(f"Encontrados {len(todos_os_pdfs_encontrados)} arquivos PDF (extensões .pdf ou .PDF) em '{pasta_documentos}':")
+        for pdf_path in sorted(todos_os_pdfs_encontrados): # Ordenar para uma saída consistente
+            print(f" - {pdf_path.name}")
+    else:
+        print(f"Nenhum arquivo com extensão .pdf ou .PDF encontrado em '{pasta_documentos}'.")
+        
+    return todos_os_pdfs_encontrados
 
 def extrair_texto_pdf(caminho_pdf: Path, limiar_minimo_texto: int = 100) -> str:
     """
