@@ -5,7 +5,8 @@ from src.ia_processor import (
     dividir_texto_em_chunks,
     gerar_embeddings_para_chunks,
     adicionar_chunks_ao_chroma, # <<< Novo import
-    inicializar_chroma         # <<< Novo import (para garantir que a pasta e coleção sejam criadas no início)
+    inicializar_chroma,         # <<< Novo import (para garantir que a pasta e coleção sejam criadas no início)
+    CHROMA_DATA_PATH # <<< IMPORTE A CONSTANTE AQUI
 )
 
 def main():
@@ -56,7 +57,7 @@ def main():
             
     print(f"\n\nProcessamento e armazenamento no ChromaDB concluídos.")
     print(f"Total de {total_chunks_processados} chunks processados e armazenados/atualizados.")
-    print(f"Os dados do ChromaDB estão salvos em: '{Path(__file__).resolve().parent / CHROMA_DATA_PATH}'") # Mostra o caminho
+    print(f"Os dados do ChromaDB estão salvos em: '{Path(__file__).resolve().parent / CHROMA_DATA_PATH}'")
 
 
 if __name__ == "__main__":
