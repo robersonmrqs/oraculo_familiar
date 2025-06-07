@@ -19,6 +19,7 @@ def criar_tabela_documentos():
         nome_arquivo TEXT NOT NULL,
         caminho_arquivo TEXT NOT NULL UNIQUE, 
         texto_preview TEXT,
+        texto_completo TEXT,
         data_catalogacao TIMESTAMP,
         hash_arquivo TEXT UNIQUE 
     )
@@ -27,23 +28,24 @@ def criar_tabela_documentos():
     conn.close()
     print("Tabela 'documentos' verificada/criada com sucesso.")
 
-def inserir_documento(nome_arquivo: str, caminho_arquivo: str, texto_preview: str, hash_arquivo: str = None):
+def inserir_documento(nome_arquivo: str, caminho_arquivo: str, 
+                      texto_preview: str, texto_completo: str,
+                      hash_arquivo: str = None):
     """
-    Insere um novo documento na tabela 'documentos'.
-    Evita duplicatas baseadas na constraint UNIQUE de 'caminho_arquivo'.
+    Insere um novo documento na tabela 'documentos', incluindo o texto completo.
     """
     conn = conectar_db()
     cursor = conn.cursor()
-    data_atual = datetime.datetime.now() # Pega data e hora atuais
+    data_atual = datetime.datetime.now()
 
     try:
         cursor.execute("""
-        INSERT INTO documentos (nome_arquivo, caminho_arquivo, texto_preview, data_catalogacao, hash_arquivo)
-        VALUES (?, ?, ?, ?, ?)
-        """, (nome_arquivo, caminho_arquivo, texto_preview, data_atual, hash_arquivo))
+        INSERT INTO documentos (nome_arquivo, caminho_arquivo, texto_preview, texto_completo, data_catalogacao, hash_arquivo)
+        VALUES (?, ?, ?, ?, ?, ?) 
+        """, (nome_arquivo, caminho_arquivo, texto_preview, texto_completo, data_atual, hash_arquivo)) # <<< VALORES ATUALIZADOS
         conn.commit()
-        print(f"Documento '{nome_arquivo}' inserido com sucesso.")
-    except sqlite3.IntegrityError: # Ocorre se caminho_arquivo ou hash_arquivo já existir (devido ao UNIQUE)
+        print(f"Documento '{nome_arquivo}' inserido com sucesso (com texto completo).")
+    except sqlite3.IntegrityError:
         print(f"Documento '{nome_arquivo}' (caminho: {caminho_arquivo}) já existe no banco de dados ou conflito de hash.")
     except Exception as e:
         print(f"Erro ao inserir documento '{nome_arquivo}': {e}")
