@@ -154,20 +154,20 @@ def adicionar_chunks_ao_chroma(doc_id: int, nome_arquivo: str, chunks_texto: lis
     except Exception as e:
         print(f"Erro ao adicionar/atualizar chunks no ChromaDB para doc ID {doc_id}: {e}")
 
-def buscar_chunks_relevantes(texto_pergunta: str, top_n: int = 3) -> list[dict]:
+def buscar_chunks_relevantes(texto_pergunta: str, top_n: int = 5, limiar_distancia: float = 0.6) -> list[dict]: # <<< PARÂMETROS AJUSTADOS
     """
     Busca os chunks de texto mais relevantes para uma pergunta no ChromaDB.
     
     Args:
         texto_pergunta: A pergunta do usuário.
-        top_n: O número de chunks mais relevantes a serem retornados.
+        top_n: O número de chunks a serem inicialmente recuperados.
+        limiar_distancia: A distância máxima para um chunk ser considerado relevante.
         
     Returns:
-        Uma lista de dicionários, onde cada dicionário contém 'texto_chunk' e 'metadados'.
-        Retorna lista vazia se ocorrer um erro ou nada for encontrado.
+        Uma lista de dicionários com os chunks relevantes que passaram no filtro.
     """
-    modelo_emb = carregar_modelo_embedding() # Garante que o modelo de embedding está carregado
-    collection = inicializar_chroma()     # Garante que a coleção ChromaDB está carregada
+    modelo_emb = carregar_modelo_embedding()
+    collection = inicializar_chroma()
 
     if not texto_pergunta or not collection or not modelo_emb:
         print("Erro: Pergunta vazia, coleção Chroma não inicializada ou modelo de embedding não carregado.")
@@ -175,35 +175,40 @@ def buscar_chunks_relevantes(texto_pergunta: str, top_n: int = 3) -> list[dict]:
 
     print(f"\nBuscando chunks relevantes para a pergunta: '{texto_pergunta}'")
     
-    # 1. Gerar o embedding para a pergunta
-    embedding_pergunta = modelo_emb.encode(texto_pergunta).tolist() # Chroma espera uma lista
+    embedding_pergunta = modelo_emb.encode(texto_pergunta).tolist()
     
-    # 2. Consultar o ChromaDB
     try:
+        # Aumentamos o top_n para ter mais candidatos a filtrar
         resultados = collection.query(
-            query_embeddings=[embedding_pergunta], # Sim, precisa ser uma lista de embeddings
+            query_embeddings=[embedding_pergunta],
             n_results=top_n,
-            include=['documents', 'metadatas', 'distances'] # Pedimos os textos, metadados e as distâncias
+            include=['documents', 'metadatas', 'distances']
         )
         
-        chunks_encontrados = []
-        if resultados and resultados.get('ids')[0]: # Verifica se houve algum resultado
-            print(f"  - Encontrados {len(resultados['ids'][0])} chunks potenciais.")
+        chunks_relevantes_filtrados = []
+        if resultados and resultados.get('ids')[0]:
+            print(f"  - Encontrados {len(resultados['ids'][0])} chunks candidatos (antes do filtro de distância).")
             for i in range(len(resultados['ids'][0])):
-                texto_chunk = resultados['documents'][0][i]
-                metadados = resultados['metadatas'][0][i]
                 distancia = resultados['distances'][0][i]
-                chunks_encontrados.append({
-                    "id_chunk_db": resultados['ids'][0][i], # ID do chunk no ChromaDB
-                    "texto_chunk": texto_chunk,
-                    "metadados": metadados, # Contém doc_id_original, nome_arquivo_original, etc.
-                    "distancia": distancia  # Quão "distante" está o chunk da pergunta (menor é melhor)
-                })
-                print(f"    - Chunk relevante (distância: {distancia:.4f}): '{texto_chunk[:100]}...'")
-        else:
-            print("  - Nenhum chunk relevante encontrado no ChromaDB para esta pergunta.")
+                
+                # <<< NOVO FILTRO DE DISTÂNCIA ADICIONADO AQUI >>>
+                if distancia <= limiar_distancia:
+                    texto_chunk = resultados['documents'][0][i]
+                    metadados = resultados['metadatas'][0][i]
+                    chunks_relevantes_filtrados.append({
+                        "id_chunk_db": resultados['ids'][0][i],
+                        "texto_chunk": texto_chunk,
+                        "metadados": metadados,
+                        "distancia": distancia
+                    })
+                    print(f"    - Chunk RELEVANTE (distância: {distancia:.4f}): '{texto_chunk[:100]}...'")
+                else:
+                    print(f"    - Chunk DESCARTADO por alta distância ({distancia:.4f}): '{resultados['documents'][0][i][:100]}...'")
+        
+        if not chunks_relevantes_filtrados:
+            print("  - Nenhum chunk relevante encontrado dentro do limiar de distância.")
             
-        return chunks_encontrados
+        return chunks_relevantes_filtrados
 
     except Exception as e:
         print(f"Erro ao consultar o ChromaDB: {e}")
