@@ -151,3 +151,58 @@ def adicionar_chunks_ao_chroma(doc_id: int, nome_arquivo: str, chunks_texto: lis
         print(f"  - {len(ids_chunks)} chunks do doc ID {doc_id} ('{nome_arquivo}') adicionados/atualizados no ChromaDB.")
     except Exception as e:
         print(f"Erro ao adicionar/atualizar chunks no ChromaDB para doc ID {doc_id}: {e}")
+
+def buscar_chunks_relevantes(texto_pergunta: str, top_n: int = 3) -> list[dict]:
+    """
+    Busca os chunks de texto mais relevantes para uma pergunta no ChromaDB.
+    
+    Args:
+        texto_pergunta: A pergunta do usuário.
+        top_n: O número de chunks mais relevantes a serem retornados.
+        
+    Returns:
+        Uma lista de dicionários, onde cada dicionário contém 'texto_chunk' e 'metadados'.
+        Retorna lista vazia se ocorrer um erro ou nada for encontrado.
+    """
+    modelo_emb = carregar_modelo_embedding() # Garante que o modelo de embedding está carregado
+    collection = inicializar_chroma()     # Garante que a coleção ChromaDB está carregada
+
+    if not texto_pergunta or not collection or not modelo_emb:
+        print("Erro: Pergunta vazia, coleção Chroma não inicializada ou modelo de embedding não carregado.")
+        return []
+
+    print(f"\nBuscando chunks relevantes para a pergunta: '{texto_pergunta}'")
+    
+    # 1. Gerar o embedding para a pergunta
+    embedding_pergunta = modelo_emb.encode(texto_pergunta).tolist() # Chroma espera uma lista
+    
+    # 2. Consultar o ChromaDB
+    try:
+        resultados = collection.query(
+            query_embeddings=[embedding_pergunta], # Sim, precisa ser uma lista de embeddings
+            n_results=top_n,
+            include=['documents', 'metadatas', 'distances'] # Pedimos os textos, metadados e as distâncias
+        )
+        
+        chunks_encontrados = []
+        if resultados and resultados.get('ids')[0]: # Verifica se houve algum resultado
+            print(f"  - Encontrados {len(resultados['ids'][0])} chunks potenciais.")
+            for i in range(len(resultados['ids'][0])):
+                texto_chunk = resultados['documents'][0][i]
+                metadados = resultados['metadatas'][0][i]
+                distancia = resultados['distances'][0][i]
+                chunks_encontrados.append({
+                    "id_chunk_db": resultados['ids'][0][i], # ID do chunk no ChromaDB
+                    "texto_chunk": texto_chunk,
+                    "metadados": metadados, # Contém doc_id_original, nome_arquivo_original, etc.
+                    "distancia": distancia  # Quão "distante" está o chunk da pergunta (menor é melhor)
+                })
+                print(f"    - Chunk relevante (distância: {distancia:.4f}): '{texto_chunk[:100]}...'")
+        else:
+            print("  - Nenhum chunk relevante encontrado no ChromaDB para esta pergunta.")
+            
+        return chunks_encontrados
+
+    except Exception as e:
+        print(f"Erro ao consultar o ChromaDB: {e}")
+        return []
