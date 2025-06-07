@@ -1,4 +1,5 @@
 # src/pdf_processor.py
+import hashlib
 import os
 from pathlib import Path
 from PyPDF2 import PdfReader
@@ -32,3 +33,15 @@ def extrair_texto_pdf(caminho_pdf: Path) -> str:
         return texto_completo[:500] + "..." # Retorna um preview
     except Exception as e:
         return f"ERRO ao extrair texto: {e}"
+    
+def calcular_hash_arquivo(caminho_arquivo: Path) -> str:
+    """Calcula o hash SHA256 de um arquivo."""
+    sha256_hash = hashlib.sha256()
+    try:
+        with open(caminho_arquivo, "rb") as f: # Abre o arquivo em modo binário para leitura
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        print(f"Erro ao calcular hash para {caminho_arquivo.name}: {e}")
+        return None
