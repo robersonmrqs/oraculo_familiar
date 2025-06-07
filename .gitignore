@@ -19,3 +19,5 @@ documentos_para_catalogar/
 # documentos_processados/
 # pdfs_originais/
 # (Considere se quer ou não versionar os PDFs. Para backup é bom, mas podem deixar o repo grande)
+# Banco de Dados Vetorial ChromaDB (não versionar os dados)
+chroma_db_store/
