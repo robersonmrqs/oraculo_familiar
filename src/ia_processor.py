@@ -1,5 +1,7 @@
 # src/ia_processor.py
 import chromadb
+import json
+import requests
 import sqlite3
 from pathlib import Path
 from sentence_transformers import SentenceTransformer
@@ -206,3 +208,42 @@ def buscar_chunks_relevantes(texto_pergunta: str, top_n: int = 3) -> list[dict]:
     except Exception as e:
         print(f"Erro ao consultar o ChromaDB: {e}")
         return []
+    
+OLLAMA_API_URL = "http://localhost:11434/api/generate" 
+# Este é o endpoint padrão do Ollama para geração de texto
+
+def gerar_resposta_com_llm(prompt: str, nome_modelo_llm: str) -> str:
+    """
+    Envia um prompt para o LLM via API do Ollama e retorna a resposta.
+    """
+    if not prompt.strip():
+        return "Erro: Prompt vazio."
+
+    print(f"\nEnviando prompt para o LLM ({nome_modelo_llm})...")
+    # print(f"Prompt para depuração:\n---\n{prompt}\n---") # Descomente para ver o prompt exato
+
+    payload = {
+        "model": nome_modelo_llm,
+        "prompt": prompt,
+        "stream": False,  # Resposta completa de uma vez, para simplificar
+    }
+
+    try:
+        response = requests.post(OLLAMA_API_URL, json=payload, timeout=120) # Timeout de 120 segundos
+        response.raise_for_status()  # Levanta um erro para códigos HTTP 4xx ou 5xx
+        
+        response_data = response.json()
+        resposta_llm = response_data.get("response", "").strip()
+        
+        print("Resposta recebida do LLM.")
+        return resposta_llm
+        
+    except requests.exceptions.RequestException as e:
+        print(f"Erro de conexão/comunicação com a API do Ollama: {e}")
+        return f"Erro ao contatar o LLM. Verifique se o Ollama está rodando e o modelo '{nome_modelo_llm}' está disponível. Erro: {e}"
+    except json.JSONDecodeError:
+        print(f"Erro ao decodificar JSON da resposta do Ollama: {response.text}")
+        return "Erro ao processar resposta do LLM."
+    except Exception as e:
+        print(f"Erro inesperado ao interagir com o LLM: {e}")
+        return f"Erro inesperado com LLM: {e}"
