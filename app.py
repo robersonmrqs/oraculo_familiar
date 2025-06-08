@@ -8,7 +8,7 @@ from twilio.rest import Client
 from dotenv import load_dotenv
 
 from src.oraculo_core import processar_pergunta
-from src.ia_processor import inicializar_chroma, carregar_modelo_embedding
+from src.ia_processor import inicializar_chroma, carregar_modelo_embedding, transcrever_audio_de_url
 
 # Carrega as variáveis de ambiente
 load_dotenv()
@@ -40,61 +40,71 @@ try:
 except Exception as e:
     print(f"ERRO FATAL na inicialização dos modelos: {e}")
 
-
 @app.route("/")
 def hello_world():
     return "<h1>O servidor do Oráculo Familiar (Jarvis) está no ar!</h1>"
 
-
 @app.route("/whatsapp", methods=['POST'])
 def webhook_whatsapp():
+    """
+    Agora lida com mensagens de texto E de voz.
+    """
     remetente = request.values.get('From', '')
-    mensagem_recebida = request.values.get('Body', '').strip()
     nome_usuario = request.values.get('ProfileName', 'Membro da Família')
-    
-    print(f"Mensagem recebida de {nome_usuario} ({remetente}): '{mensagem_recebida}'")
+    num_media = int(request.values.get('NumMedia', 0)) # Verifica se há mídia na mensagem
 
-    mensagem_lower_limpa = ''.join(c for c in mensagem_recebida.lower() if c.isalnum() or c.isspace()).strip()
+    mensagem_processada = ""
+
+    # --- NOVA LÓGICA: TEXTO OU ÁUDIO? ---
+    if num_media > 0:
+        # É uma mensagem de áudio/mídia
+        url_audio = request.values.get('MediaUrl0')
+        print(f"Recebida mensagem de ÁUDIO de {nome_usuario} ({remetente})")
+        texto_transcrito = transcrever_audio_de_url(url_audio)
+        
+        if not texto_transcrito:
+            resposta_erro = "Desculpe, não consegui entender o áudio. Pode tentar novamente?"
+            resposta_twilio = MessagingResponse()
+            resposta_twilio.message(resposta_erro)
+            return str(resposta_twilio)
+        
+        mensagem_processada = texto_transcrito
+    else:
+        # É uma mensagem de texto
+        mensagem_processada = request.values.get('Body', '').strip()
+        print(f"Mensagem de TEXTO recebida de {nome_usuario} ({remetente}): '{mensagem_processada}'")
+    # --- FIM DA NOVA LÓGICA ---
     
-    # --- NOVA LÓGICA DE CONVERSA (SAUDAÇÃO E DESPEDIDA) ---
+    # Daqui para baixo, o fluxo é o mesmo, mas usando a "mensagem_processada"
+    mensagem_lower_limpa = ''.join(c for c in mensagem_processada.lower() if c.isalnum() or c.isspace()).strip()
     palavras_da_mensagem = set(mensagem_lower_limpa.split())
     
-    # 1. Verifica se é uma saudação
     if any(saudacao in palavras_da_mensagem for saudacao in SAUDACOES):
-        resposta_texto = f"Olá, {nome_usuario}. Sou Jarvis, o Oráculo de sua família. Em que posso ser útil?"
-        print(f"Enviando saudação de volta para {nome_usuario}.")
-        
+        # ... (lógica de saudação permanece a mesma)
+        resposta_texto = f"Olá, {nome_usuario}. Sou Jarvis. Em que posso ser útil?"
         resposta_twilio = MessagingResponse()
         resposta_twilio.message(resposta_texto)
         return str(resposta_twilio)
 
-    # 2. Verifica se é uma despedida
-    # Consideramos uma despedida se for uma mensagem curta e contiver uma palavra de despedida
     if len(palavras_da_mensagem) <= 3 and any(despedida in palavras_da_mensagem for despedida in DESPEDIDAS):
+        # ... (lógica de despedida permanece a mesma)
         resposta_texto = "Entendido. Precisando, é só chamar! Até mais."
-        # Limpa o histórico da conversa para um novo começo na próxima vez
-        if remetente in historicos_de_conversa:
-            del historicos_de_conversa[remetente]
-        
-        print(f"Encerrando a conversa com {nome_usuario}.")
+        if remetente in historicos_de_conversa: del historicos_de_conversa[remetente]
         resposta_twilio = MessagingResponse()
         resposta_twilio.message(resposta_texto)
         return str(resposta_twilio)
-    # --- FIM DA NOVA LÓGICA ---
 
-    # Se não for saudação nem despedida, trata como uma pergunta para a IA
+    # Trata como uma pergunta para a IA
     thread = threading.Thread(
         target=processar_e_enviar_resposta,
-        args=(remetente, mensagem_recebida, nome_usuario), # Passa o nome do usuário
+        args=(remetente, mensagem_processada, nome_usuario),
         daemon=True
     )
     thread.start()
 
     resposta_imediata = MessagingResponse()
-    resposta_imediata.message("Recebi sua pergunta... 🤔 Processando e já te envio a resposta!")
-
+    resposta_imediata.message("Recebi sua mensagem... 🤔 Processando e já te envio a resposta!")
     return str(resposta_imediata)
-
 
 def processar_e_enviar_resposta(remetente, mensagem_recebida, nome_usuario):
     """

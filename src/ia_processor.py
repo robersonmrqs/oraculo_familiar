@@ -6,7 +6,19 @@ from pathlib import Path
 import chromadb
 import requests
 import json
+import whisper
+import tempfile
+import os
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from dotenv import load_dotenv
+from .database_manager import marcar_documento_como_indexado
+
+# Carrega as variáveis de ambiente para ter acesso às credenciais
+load_dotenv()
+
+# ... outras constantes ...
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
 
 # --- CONSTANTES DE CONFIGURAÇÃO ---
 NOME_BANCO_DADOS = "oraculo_familiar.db"
@@ -25,7 +37,16 @@ STOPWORDS = [
 model = None
 chroma_client = None
 chroma_collection = None
+model_whisper = None
 
+def carregar_modelo_whisper(modelo: str = "small"):
+    """Carrega o modelo Whisper para STT sob demanda."""
+    global model_whisper
+    if model_whisper is None:
+        print(f"Carregando o modelo Whisper STT: '{modelo}'...")
+        model_whisper = whisper.load_model(modelo)
+        print("Modelo Whisper carregado.")
+    return model_whisper
 
 def carregar_modelo_embedding():
     """Carrega o modelo de sentence transformer."""
@@ -42,10 +63,10 @@ def conectar_db():
     return sqlite3.connect(db_path)
 
 def obter_documentos_para_embedding():
-    """Busca documentos do banco de dados que possuem texto completo."""
+    """Busca apenas os documentos que ainda não foram indexados no ChromaDB."""
     conn = conectar_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id, nome_arquivo, texto_completo FROM documentos WHERE texto_completo IS NOT NULL AND texto_completo != ''")
+    # Adicionamos a nova condição no SELECT
+    cursor = conn.execute("SELECT id, nome_arquivo, texto_completo FROM documentos WHERE texto_completo IS NOT NULL AND texto_completo != '' AND indexado_no_chroma = 0")
     documentos = cursor.fetchall()
     conn.close()
     return documentos
@@ -82,7 +103,7 @@ def inicializar_chroma():
     return chroma_collection
 
 def adicionar_chunks_ao_chroma(doc_id: int, nome_arquivo: str, chunks_texto: list[str], embeddings_vetores: list[list[float]]):
-    """Adiciona os chunks ao ChromaDB, convertendo o texto para MINÚSCULAS para busca case-insensitive."""
+    """Adiciona os chunks ao ChromaDB e marca o documento como indexado."""
     collection = inicializar_chroma()
     if not all([collection, chunks_texto, embeddings_vetores]) or len(chunks_texto) != len(embeddings_vetores):
         print("Erro: Dados de entrada inválidos para adicionar ao ChromaDB.")
@@ -100,6 +121,11 @@ def adicionar_chunks_ao_chroma(doc_id: int, nome_arquivo: str, chunks_texto: lis
             documents=chunks_em_minusculas
         )
         print(f"  - {len(ids_chunks)} chunks do doc ID {doc_id} ('{nome_arquivo}') adicionados/atualizados no ChromaDB.")
+        
+        # --- NOVA LINHA ADICIONADA AQUI ---
+        # Se a inserção no ChromaDB foi bem-sucedida, marca no SQLite
+        marcar_documento_como_indexado(doc_id)
+        
     except Exception as e:
         print(f"Erro ao adicionar/atualizar chunks no ChromaDB para doc ID {doc_id}: {e}")
 
@@ -173,3 +199,39 @@ def gerar_resposta_com_llm(prompt: str, nome_modelo_llm: str) -> str:
     except Exception as e:
         print(f"Erro inesperado ao interagir com o LLM: {e}")
         return f"Erro inesperado com LLM: {e}"
+    
+def transcrever_audio_de_url(url_audio: str) -> str:
+    """Baixa um arquivo de áudio de uma URL e o transcreve para texto usando Whisper."""
+    try:
+        # Baixa o conteúdo do áudio
+        print(f"Baixando áudio da URL: {url_audio}")
+        response = requests.get(url_audio, auth=(account_sid, auth_token))
+        response.raise_for_status()
+
+        # Cria um arquivo temporário para o áudio baixado
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".ogg") as tmp_audio_file:
+            tmp_audio_file.write(response.content)
+            tmp_audio_path = tmp_audio_file.name
+        
+        print(f"Áudio salvo temporariamente em: {tmp_audio_path}")
+
+        # Carrega o modelo Whisper
+        modelo_stt = carregar_modelo_whisper("small")
+
+        # Transcreve o áudio
+        print("Iniciando transcrição do áudio...")
+        resultado = modelo_stt.transcribe(tmp_audio_path, fp16=False) # fp16=False para rodar em CPU
+        texto_transcrito = resultado.get('text', '').strip()
+        print(f"Texto transcrito: '{texto_transcrito}'")
+
+        # Limpa o arquivo temporário
+        os.remove(tmp_audio_path)
+        
+        return texto_transcrito
+
+    except Exception as e:
+        print(f"ERRO durante a transcrição do áudio: {e}")
+        # Limpa o arquivo temporário em caso de erro
+        if 'tmp_audio_path' in locals() and os.path.exists(tmp_audio_path):
+            os.remove(tmp_audio_path)
+        return ""
