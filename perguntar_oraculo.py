@@ -7,52 +7,56 @@ from src.ia_processor import (
     carregar_modelo_embedding
 )
 
-# Defina o modelo LLM que você tem rodando e quer usar
 MODELO_LLM_OLLAMA = "llama3:instruct"
 
-def formatar_prompt(pergunta_usuario: str, chunks_contexto: list[dict]) -> str:
+def formatar_prompt(pergunta_usuario: str, chunks_contexto: list[dict], historico_conversa: list[dict]) -> str:
     """
-    Formata o prompt para o LLM com a pergunta e os chunks de contexto.
+    Formata o prompt para o LLM com o histórico da conversa, a pergunta e os chunks de contexto.
     """
-    if not chunks_contexto:
-        # Se nenhum contexto for encontrado, o LLM usará seu conhecimento geral.
-        # A instrução no prompt principal lida com o caso de não encontrar a info.
-        return (
-            "Você é um assistente prestativo do 'Oráculo Familiar'. "
-            "Responda à PERGUNTA do usuário. Como nenhum documento relevante foi encontrado, "
-            "informe educadamente que você não encontrou informações sobre o assunto nos documentos da família.\n\n"
-            f"PERGUNTA: {pergunta_usuario}\n\n"
-            "RESPOSTA:"
-        )
+    # Formata o histórico da conversa para inclusão no prompt
+    historico_formatado = ""
+    if historico_conversa:
+        historico_formatado += "--- INÍCIO DO HISTÓRICO DA CONVERSA ---\n"
+        for turno in historico_conversa:
+            role = "Usuário" if turno["role"] == "user" else "Oráculo"
+            historico_formatado += f"{role}: {turno['content']}\n"
+        historico_formatado += "--- FIM DO HISTÓRICO DA CONVERSA ---\n\n"
 
     contexto_str = "\n\n---\n\n".join([chunk.get('texto_chunk', '') for chunk in chunks_contexto])
 
-    prompt = (
+    # A instrução inicial para o LLM
+    instrucao_sistema = (
         "Você é um assistente prestativo do 'Oráculo Familiar'. "
-        "Sua tarefa é responder a PERGUNTA do usuário baseando-se estritamente no CONTEXTO fornecido, que foi extraído de documentos familiares. "
-        "Seja direto e factual.\n"
-        "Se a informação para responder à pergunta não estiver explicitamente no CONTEXTO, diga 'Com base nos documentos fornecidos, não encontrei informações sobre isso.'. "
-        "Não invente respostas.\n\n"
-        f"CONTEXTO:\n{contexto_str}\n\n"
-        f"PERGUNTA: {pergunta_usuario}\n\n"
+        "Sua tarefa é responder a NOVA PERGUNTA do usuário baseando-se no CONTEXTO (extraído de documentos familiares) "
+        "e no HISTÓRICO DA CONVERSA, se for relevante.\n"
+        "Se a informação não estiver no CONTEXTO, diga 'Com base nos documentos fornecidos, não encontrei informações sobre isso.'.\n\n"
+    )
+
+    prompt = (
+        instrucao_sistema +
+        historico_formatado +
+        f"CONTEXTO ATUAL (DOCUMENTOS RELEVANTES PARA A NOVA PERGUNTA):\n{contexto_str}\n\n"
+        f"NOVA PERGUNTA: {pergunta_usuario}\n\n"
         "RESPOSTA:"
     )
     return prompt
 
 def main():
-    """Função principal que executa o loop de Pergunta e Resposta."""
-    print("Oráculo Familiar - Sistema de Pergunta e Resposta")
+    """Função principal que executa o loop de Pergunta e Resposta com memória."""
+    print("Oráculo Familiar - Sistema de Pergunta e Resposta (com Memória)")
     print(f"Usando LLM: {MODELO_LLM_OLLAMA} via Ollama.")
-    print("Certifique-se que o serviço Ollama está rodando em segundo plano.")
 
     try:
-        print("Inicializando componentes de IA (pode levar um momento)...")
+        print("Inicializando componentes de IA...")
         carregar_modelo_embedding()
         inicializar_chroma()
         print("Componentes de IA prontos.")
     except Exception as e:
         print(f"Erro fatal durante a inicialização: {e}")
         return
+
+    # Inicializa o histórico da conversa aqui, fora do loop
+    historico_conversa = []
 
     while True:
         pergunta_usuario = input("\nQual sua pergunta sobre os documentos da família? (ou 'sair'): ")
@@ -61,30 +65,34 @@ def main():
         if not pergunta_usuario.strip():
             continue
 
-        # <<< LINHA CORRIGIDA ABAIXO (REMOVIDO o limiar_distancia) >>>
+        # A busca de chunks ainda é baseada apenas na pergunta atual
         chunks_relevantes = buscar_chunks_relevantes(pergunta_usuario, top_n=5)
 
-        prompt_para_llm = formatar_prompt(pergunta_usuario, chunks_relevantes)
+        # O prompt agora inclui o histórico da conversa
+        prompt_para_llm = formatar_prompt(pergunta_usuario, chunks_relevantes, historico_conversa)
+        
         resposta_llm = gerar_resposta_com_llm(prompt_para_llm, nome_modelo_llm=MODELO_LLM_OLLAMA)
 
         print("\n" + "="*25 + " RESPOSTA DO ORÁCULO " + "="*25)
         print(resposta_llm)
         print("="*72)
 
+        # Adiciona a pergunta atual e a resposta ao histórico para a próxima rodada
+        historico_conversa.append({"role": "user", "content": pergunta_usuario})
+        historico_conversa.append({"role": "assistant", "content": resposta_llm})
+
+        # Opcional: mostrar os documentos consultados (como antes)
         if chunks_relevantes:
             print("\n--- Documentos consultados para esta resposta: ---")
             for i, chunk_info in enumerate(chunks_relevantes):
                 info_metadados = chunk_info.get('metadados', {})
                 nome_arquivo = info_metadados.get('nome_arquivo_original', 'N/A')
-                distancia = chunk_info.get('distancia', 0.0)
-                texto_chunk = chunk_info.get('texto_chunk', '')
-
-                print(f"\n{i+1}. Trecho do Arquivo: '{nome_arquivo}' (Distância: {distancia:.4f})")
-                print(f"   Conteúdo: \"{texto_chunk[:250]}...\"")
+                print(f"\n{i+1}. Trecho do Arquivo: '{nome_arquivo}'")
+                print(f"   Conteúdo: \"{chunk_info.get('texto_chunk', '')[:250]}...\"")
             print("-" * 52)
         else:
             print("\n(Nenhum trecho específico de documento foi encontrado para esta pergunta)")
-
+    
     print("\nOráculo Familiar encerrado. Até mais!")
 
 if __name__ == "__main__":
