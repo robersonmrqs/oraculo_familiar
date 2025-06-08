@@ -18,7 +18,7 @@ OLLAMA_API_URL = "http://localhost:11434/api/generate"
 # Lista de palavras comuns a serem ignoradas na busca por filtro (stopwords)
 STOPWORDS = [
     'a', 'o', 'e', 'de', 'do', 'da', 'para', 'com', 'um', 'uma', 'qual', 'quais',
-    'em', 'os', 'as', 'dos', 'das', 'é', 'foi', 'pela', 'pelo', 'são'
+    'em', 'os', 'as', 'dos', 'das', 'é', 'foi', 'pela', 'pelo', 'são', 'eu', 'não' 
 ]
 
 # --- VARIÁVEIS GLOBAIS PARA OS CLIENTES (CARREGADOS SOB DEMANDA) ---
