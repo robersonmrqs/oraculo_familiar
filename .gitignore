@@ -1,5 +1,5 @@
 # Ambiente Virtual Python
-.venv
+.venv/
 
 # Arquivos de cache do Python
 __pycache__/
@@ -13,7 +13,7 @@ __pycache__/
 # Arquivos de banco de dados SQLite (se você planeja usar e não versionar)
 *.db
 *.sqlite3
-oraculo_familiar.db
+oraculo_familiar.db/
 
 # Arquivos de documentos processados ou PDFs originais (se não quiser versioná-los no Git)
 documentos_para_catalogar/
@@ -22,3 +22,5 @@ documentos_para_catalogar/
 # (Considere se quer ou não versionar os PDFs. Para backup é bom, mas podem deixar o repo grande)
 # Banco de Dados Vetorial ChromaDB (não versionar os dados)
 chroma_db_store/
+
+.env
